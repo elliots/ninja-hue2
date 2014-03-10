@@ -17,8 +17,7 @@
     "Module"
   ],
   "dependencies": {
-    "node-hue-api": "~0.2.2",
-    "backoff": "~2.3.0"
+    "node-hue-api": "~0.2.2"
   },
   "author": "Elliot Shepherd <elliot@ninjablocks.com>",
   "license": "MIT",
