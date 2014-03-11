@@ -42,7 +42,7 @@ HueDriver.prototype.findBridges = function() {
 
         if (this.config[bridge.id]) {
 
-          log.debug('Hue> Have username for bridge', bridge.ipaddress, this.config[bridge.ipaddress]);
+          log.debug('Hue> Have username for bridge', bridge.ipaddress, this.config[bridge.id]);
           this.addBridge(bridge);
 
         } else {
@@ -88,7 +88,7 @@ HueDriver.prototype.registerBridge = function(bridge) {
 
 HueDriver.prototype.addBridge = function(bridge) {
   var log = this.app.log;
-  var api = new hue.HueApi(bridge.ipaddress, this.config[bridge.ipaddress]);
+  var api = new hue.HueApi(bridge.ipaddress, this.config[bridge.id]);
 
   api.getFullState(function(err, state) {
     if (err) {
