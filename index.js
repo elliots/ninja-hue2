@@ -98,19 +98,19 @@ HueDriver.prototype.addBridge = function(bridge) {
     log.debug('Hue> Full state for bridge', bridge, JSON.stringify(state, 2, 2));
 
     for (var lightId in state.lights) {
-      this.addLight(api, bridge.id, lightId, state.lights[lightId].name);
+      this.addLight(api, bridge.id, lightId, state.lights[lightId]);
     }
 
   }.bind(this));
 };
 
-HueDriver.prototype.addLight = function(api, stationId, lightId, name) {
-  this.app.log.info('Adding light', lightId, name);
+HueDriver.prototype.addLight = function(api, stationId, lightId, light) {
+  this.app.log.info('Adding light', lightId, light);
 
-  this.emit('register', new Light(api, stationId, lightId, name));
+  this.emit('register', new Light(api, stationId, lightId, light.name, light.state));
 };
 
-function Light(api, stationId, id, name) {
+function Light(api, stationId, id, name, state) {
   this.readable = true;
   this.writeable = true;
   this.V = 0;
@@ -120,6 +120,9 @@ function Light(api, stationId, id, name) {
 
   this.id = id;
   this.api = api;
+  process.nextTick(function() {
+    this.emit('data', state);
+  }.bind(this));
 }
 util.inherits(Light, stream);
 
