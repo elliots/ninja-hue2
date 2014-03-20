@@ -22,6 +22,6 @@
   "author": "Elliot Shepherd <elliot@ninjablocks.com>",
   "license": "MIT",
   "config": {
-    "stations": []
+    "bridges": {"SOMETHING":"12.22.22.22"}
   }
 }

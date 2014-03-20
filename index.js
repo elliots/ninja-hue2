@@ -6,13 +6,22 @@ var stream = require('stream');
 var hue = require('node-hue-api');
 var hueapi = new hue.HueApi();
 
+var USERNAME = 'ninjablocks';
+
 function HueDriver(config, app) {
   this.config = config;
   this.app = app;
 
-  this.seen = {};
+  this.bridges = {};
 
   app.once('client::up', function() {
+    this.log.debug('Starting up');
+    this.log.debug('Configuration', this.config);
+
+    for (var id in config.bridges) {
+      this.addBridge(id, config.bridges[id]);
+    }
+
     setInterval(this.findBridges.bind(this), 5 * 60 * 1000);
     this.findBridges();
   }.bind(this));
@@ -21,91 +30,100 @@ function HueDriver(config, app) {
 util.inherits(HueDriver, stream);
 
 HueDriver.prototype.findBridges = function() {
-  var log = this.app.log;
+  var log = this.log;
 
-  log.debug('Hue> Searching for bridges');
+  log.debug('Searching for bridges');
 
   hue.locateBridges(function(err, result) {
 
       if (err) {
-        return log.error('Hue> Failed to search for bridges', err);
+        return log.error('Failed to search for bridges', err);
       }
       result.forEach(function(bridge) {
-        
-        if (this.seen[bridge.id]) {
-          return;
-        }
-
-        this.seen[bridge.id] = bridge.ipaddress;
-
-        log.info('Hue> Found bridge', bridge);
-
-        if (this.config[bridge.id]) {
-
-          log.debug('Hue> Have username for bridge', bridge.ipaddress, this.config[bridge.id]);
-          this.addBridge(bridge);
-
-        } else {
-          log.info('Hue> No configuration. Starting registration.');
-          this.registerBridge(bridge);
-          this.emit('announcement', {
-            'contents': [
-              {'type': 'heading',      'text': 'New Philips Hue Link Detected' },
-              {'type': 'paragraph',    'text': 'To enable your Hue lights on the dashboard please press the link button on your Hue base station.' }
-            ]
-          });
-        }
+        this.addBridge(bridge.id, bridge.ipaddress);
       }.bind(this));
   }.bind(this));
 };
 
-HueDriver.prototype.registerBridge = function(bridge) {
-  var log = this.app.log;
+HueDriver.prototype.registerBridge = function(id, ip) {
+  var log = this.log;
 
-  hueapi.createUser(bridge.ipaddress, function(err, user) {
+  hueapi.createUser(ip, USERNAME, 'NinjaBlocks', function(err) {
     if (err) {
       var retryTime = 10000;
       if (err.type == 101) {
-        retryTime = 200;
+        retryTime = 1000;
       } else {
-        log.error('Hue> Failed to add a user to the bridge.', err);
+        log.error('Failed to register user with the bridge', id, ip, err);
       }
       
       setTimeout(function() {
-        this.registerBridge(bridge);
+        this.registerBridge(id, ip);
       }.bind(this), retryTime);
 
       return;
     }
 
-    this.config[bridge.id] = user;
-    this.save(this.config);
-
-    log.info('Hue> Got user', user, 'for bridge', bridge);
-    this.addBridge(bridge);
+    log.info('Registered user with bridge', id, ip);
+    
+    this.addBridge(id, ip);
   }.bind(this));
 };
 
-HueDriver.prototype.addBridge = function(bridge) {
-  var log = this.app.log;
-  var api = new hue.HueApi(bridge.ipaddress, this.config[bridge.id]);
+HueDriver.prototype.addBridge = function(id, ip) {
+
+  var log = this.log;
+
+  if (!this.config.bridges[id] || this.config.bridges[id] != ip) {
+    // Ensure it's saved for next time
+    this.config.bridges[id] = ip;
+    this.save(this.config);
+  }
+
+  if (this.bridges[id]) {
+    if (this.bridges[id].host == ip) {
+      // All good. We know about this bridge, and it hasn't changed ip.
+    } else {
+      // The bridge has changed ip. Fix our api client!
+      log.warn('Bridge', id, 'has changed ip from', this.bridges[id].host, 'to', ip);
+      this.bridges[id].host = ip;
+    }
+    return;
+  }
+
+  log.info('Adding bridge', id, ip);
+
+  var api = new hue.HueApi(ip, USERNAME);
+  this.bridges[id] = api;
 
   api.getFullState(function(err, state) {
     if (err) {
-      return log.error('Hue> Failed to get bridge state', err);
+      log.error('Failed to get bridge state', err);
+      if (err.code === 'ETIMEDOUT') {
+        log.error('Timed out... removing bridge from config');
+        delete(this.bridges[id]);
+        delete(this.config.bridges[id]);
+        this.save(this.config);
+      }
+      if (err.type === 1) {
+        // Unregistered user
+        log.info('Unregistered user, registering');
+        this.registerBridge(id, ip);
+      }
+      return;
     }
 
-    log.debug('Hue> Full state for bridge', bridge, JSON.stringify(state, 2, 2));
+    log.debug('Full state for bridge', id, JSON.stringify(state, 2, 2));
 
     for (var lightId in state.lights) {
-      this.addLight(api, bridge.id, lightId, state.lights[lightId]);
+      this.addLight(api, id, lightId, state.lights[lightId]);
     }
 
   }.bind(this));
 };
 
 HueDriver.prototype.addLight = function(api, stationId, lightId, light) {
-  this.app.log.info('Adding light', lightId, light);
+  this.log.info('Adding light', lightId, light);
 
   this.emit('register', new Light(api, stationId, lightId, light.name, light.state));
 };
@@ -116,7 +134,7 @@ function Light(api, stationId, id, name, state) {
   this.V = 0;
   this.D = 1008;
   this.name = name;
-  this.G = stationId + id;
+  this.G = 'hue'+stationId + id;
 
   this.id = id;
   this.api = api;

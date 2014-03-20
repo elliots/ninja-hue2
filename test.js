@@ -3,9 +3,9 @@ var EventEmitter = require('events').EventEmitter;
 
 var opts;
 try {
-  opts = require('config.json');
+  opts = require('./config.json');
 } catch(e) {
-  opts = require('package.json').config || {};
+  opts = require('./package.json').config || {};
 }
 
 var app = new EventEmitter();
@@ -17,6 +17,7 @@ app.log = {
 };
 
 var driver = new (require('./index'))(opts, app);
+driver.log = app.log;
 
 driver.on('register', function(device) {
     console.log('Driver.register', device);
