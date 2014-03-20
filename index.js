@@ -8,18 +8,18 @@ var hueapi = new hue.HueApi();
 
 var USERNAME = 'ninjablocks';
 
-function HueDriver(config, app) {
-  this.config = config;
+function HueDriver(opts, app) {
+  this.opts = opts;
   this.app = app;
 
   this.bridges = {};
 
   app.once('client::up', function() {
     this.log.debug('Starting up');
-    this.log.debug('Configuration', this.config);
+    this.log.debug('Configuration', this.opts);
 
-    for (var id in config.bridges) {
-      this.addBridge(id, config.bridges[id]);
+    for (var id in opts.bridges) {
+      this.addBridge(id, opts.bridges[id]);
     }
 
     setInterval(this.findBridges.bind(this), 5 * 60 * 1000);
@@ -74,10 +74,10 @@ HueDriver.prototype.addBridge = function(id, ip) {
 
   var log = this.log;
 
-  if (!this.config.bridges[id] || this.config.bridges[id] != ip) {
+  if (!this.opts.bridges[id] || this.opts.bridges[id] != ip) {
     // Ensure it's saved for next time
-    this.config.bridges[id] = ip;
-    this.save(this.config);
+    this.opts.bridges[id] = ip;
+    this.save(this.opts);
   }
 
   if (this.bridges[id]) {
@@ -102,12 +102,18 @@ HueDriver.prototype.addBridge = function(id, ip) {
       if (err.code === 'ETIMEDOUT') {
         log.error('Timed out... removing bridge from config');
         delete(this.bridges[id]);
-        delete(this.config.bridges[id]);
-        this.save(this.config);
+        delete(this.opts.bridges[id]);
+        this.save(this.opts);
       }
       if (err.type === 1) {
         // Unregistered user
         log.info('Unregistered user, registering');
+        this.emit('announcement', {
+          'contents': [
+            { 'type': 'heading',      'text': 'New Philips Hue Link Detected' },
+            { 'type': 'paragraph',    'text': 'To enable your Hue lights on the dashboard please press the link button on your Hue base station.' }
+          ]
+        });
         this.registerBridge(id, ip);
       }
       return;
